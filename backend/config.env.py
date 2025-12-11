@@ -15,12 +15,12 @@ CONFIG = {
     
     "production": {
         "database_url": "mysql+pymysql://usuario:password@host.railway.app:3306/kaimo_bd",
-        "frontend_url": "https://kaimo.up.railway.app",
-        "api_url": "https://backendkaimo-production.up.railway.app",
+        "frontend_url": "kaimox.up.railway.app",
+        "api_url": "backkaimo.up.railway.app",
         "debug": False,
         "docs_enabled": False,
     },
-    "current": "production" 
+    "current": "development" 
 }
 
 def get_config():

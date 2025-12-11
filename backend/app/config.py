@@ -21,8 +21,8 @@ class Settings(BaseSettings):
 
     gemini_api_key: Optional[str] = os.getenv("GEMINI_API_KEY")
 
-    frontend_url: str = os.getenv("FRONTEND_URL", "https://kaimo.up.railway.app")
-    api_url: str = os.getenv("API_URL", "https://backendkaimo-production.up.railway.app")
+    frontend_url: str = os.getenv("FRONTEND_URL", "kaimox.up.railway.app")
+    api_url: str = os.getenv("API_URL", "backkaimo.up.railway.app")
 
     environment: str = CURRENT_ENV
     debug: bool = CURRENT_ENV != "production"
@@ -45,12 +45,12 @@ def get_cors_origins() -> list:
     if is_production():
         return [
             settings.frontend_url,
-            "https://kaimo.up.railway.app"
+            "kaimox.up.railway.app"
         ]
 
     return [
         "http://localhost:4200",
         "http://127.0.0.1:4200",
         settings.frontend_url,
-        "https://kaimo.up.railway.app"
+        "kaimox.up.railway.app"
     ]
