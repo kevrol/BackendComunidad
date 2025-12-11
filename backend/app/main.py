@@ -517,12 +517,20 @@ def search_technicians(
     query: Optional[str] = None,
     category: Optional[str] = None,
     location: Optional[str] = None,
+    favorites_only: bool = Query(False),
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_current_active_user)
 ):
     """Buscar técnicos"""
     db_query = db.query(models.User).filter(models.User.role == "technician")
     
+    if favorites_only:
+        # Subquery para obtener IDs de favoritos del usuario actual
+        fav_subquery = db.query(models.favorites.c.technician_id).filter(
+            models.favorites.c.user_id == current_user.id
+        ).scalar_subquery()
+        db_query = db_query.filter(models.User.id.in_(fav_subquery))
+
     if query:
         db_query = db_query.filter(
             or_(
@@ -636,11 +644,8 @@ def get_dashboard_stats(
         try:
             if hasattr(app_services, 'MessagingService'):
                 unread_messages = app_services.MessagingService.get_unread_messages_count(db, current_user.id)
-            else:
-                print("WARNING: MessagingService no encontrado en app_services")
         except Exception as msg_error:
             print(f"Error obteniendo mensajes no leídos: {msg_error}")
-            # Continuamos sin fallar todo el request
             
         # 2. Activity Feed (Defensivo)
         recent_activity = []
@@ -677,27 +682,37 @@ def get_dashboard_stats(
                 })
         except Exception as activity_error:
             print(f"Error generando actividad reciente: {activity_error}")
-            traceback.print_exc()
             
-        # 3. Stats Específicas (Defensivo con valores por defecto)
-        # Usamos getattr para evitar caídas si el modelo no tiene el campo aún
+        # 3. Stats Específicas usando COUNT DIRECTO a la BD
         
         if current_user.role == "client":
-            hired_services_count = db.query(models.Service).filter(
+            # Count Servicios
+            hired_services_count = db.query(func.count(models.Service.id)).filter(
                 models.Service.client_id == current_user.id
-            ).count()
+            ).scalar() or 0
             
-            # Manejo seguro de friends
-            friends_list = getattr(current_user, 'friends', [])
-            friends_count = len(friends_list) if friends_list else 0
+            # Count Amigos / Contactos
+            friends_count = db.query(func.count(models.friendship.c.id)).filter(
+                or_(
+                    models.friendship.c.user_id == current_user.id,
+                    models.friendship.c.friend_id == current_user.id
+                ),
+                models.friendship.c.status == "accepted"
+            ).scalar() or 0
             
-            # Profile views seguro
+            # Count Favoritos
+            favorites_count = db.query(func.count(models.favorites.c.technician_id)).filter(
+                models.favorites.c.user_id == current_user.id
+            ).scalar() or 0
+            
+            # Profile views
             profile_views = getattr(current_user, 'profile_views', 0) or 0
+            
             stats = schemas.ClientStats(
-                contacts=friends_count, # Usamos amigos como contactos
+                contacts=friends_count,
                 hired_services=hired_services_count,
-                friends=friends_count,
-                favorites=0, # Placeholder
+                friends=friends_count, # Mismo valor
+                favorites=favorites_count,
                 profile_views=profile_views,
                 unread_messages=unread_messages
             )
@@ -708,10 +723,11 @@ def get_dashboard_stats(
             rating = getattr(current_user, 'rating', 0.0) or 0.0
             total_reviews = getattr(current_user, 'total_reviews', 0) or 0
             profile_views = getattr(current_user, 'profile_views', 0) or 0
+            
             stats = schemas.TechnicianStats(
                 active_jobs=active_jobs,
                 completed_jobs=completed_jobs,
-                rating=float(rating), # Asegurar float
+                rating=float(rating),
                 total_reviews=total_reviews,
                 profile_views=profile_views,
                 unread_messages=unread_messages
@@ -723,15 +739,13 @@ def get_dashboard_stats(
             recent_activity=recent_activity
         )
     except Exception as e:
-        # Catch-all final para imprimir el error REAL en la consola del servidor
         print("------------- CRITICAL DASHBOARD ERROR -------------")
         print(f"Error details: {e}")
         traceback.print_exc()
-        print("----------------------------------------------------")
         
         raise HTTPException(
             status_code=500,
-            detail=f"Error interno recuperando dashboard. Revisa los logs del servidor para más detalles."
+            detail=f"Error interno recuperando dashboard. {str(e)}"
         )
 
 @app.get("/api/technicians/{technician_id}/profile", response_model=schemas.TechnicianProfileResponse)
