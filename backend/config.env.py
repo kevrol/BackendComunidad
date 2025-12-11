@@ -14,7 +14,7 @@ CONFIG = {
     },
     
     "production": {
-        "database_url": "mysql+pymysql://usuario:password@host.railway.app:3306/kaimo_bd",
+        "database_url": "mysql+pymysql://usuario:password@host.railway.app:3306/railway",
         "frontend_url": "kaimox.up.railway.app",
         "api_url": "backkaimo.up.railway.app",
         "debug": False,
