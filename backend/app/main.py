@@ -513,9 +513,12 @@ def search_technicians(
     
     if query:
         db_query = db_query.filter(
-            models.User.username.ilike(f"%{query}%") |
-            models.User.full_name.ilike(f"%{query}%") |
-            models.User.bio.ilike(f"%{query}%")
+            or_(
+                models.User.username.ilike(f"%{query}%"),
+                models.User.full_name.ilike(f"%{query}%"),
+                models.User.specialties.ilike(f"%{query}%"),
+                models.User.bio.ilike(f"%{query}%")
+            )
         )
     
     if location:
@@ -1016,7 +1019,8 @@ def get_dashboard_stats(
     if current_user.role == "client":
         # Estadísticas de cliente
         hired_services = db.query(models.Service).filter(
-            models.Service.client_id == current_user.id
+            models.Service.client_id == current_user.id,
+            models.Service.status == "completed"
         ).count()
         
         friends_count = len(current_user.friends)

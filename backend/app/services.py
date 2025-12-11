@@ -596,14 +596,28 @@ class ServiceRequestService:
         if service.client_id != user_id and service.technician_id != user_id:
             return None
             
+        old_status = service.status
         service.status = status
         service.updated_at = func.now()
         
         if status == "accepted" and price is not None:
             service.price = price
             
-        if status == "completed":
-            service.completed_at = func.now()
+        technician = service.technician
+        
+        # Actualizar contadores si cambia el estado
+        if old_status != status:
+            if status == "in_progress":
+                technician.jobs_active += 1
+            elif status == "completed":
+                service.completed_at = func.now()
+                # Solo decrementar si estaba en progreso
+                if old_status == "in_progress":
+                    technician.jobs_active = max(0, technician.jobs_active - 1)
+                technician.jobs_completed += 1
+            elif status == "cancelled":
+                if old_status == "in_progress":
+                    technician.jobs_active = max(0, technician.jobs_active - 1)
             
         db.commit()
         db.refresh(service)
