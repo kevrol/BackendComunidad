@@ -3,7 +3,16 @@ from pydantic_settings import BaseSettings
 from typing import Optional
 import os
 
-CURRENT_ENV = os.getenv("ENV", "development").lower()
+# Auto-detectar entorno si no estar explícito
+env_var = os.getenv("ENV")
+if not env_var:
+    # Si estamos en Railway, asumir producción por defecto
+    if os.getenv("RAILWAY_ENVIRONMENT") or os.getenv("RAILWAY_STATIC_URL"):
+        env_var = "production"
+    else:
+        env_var = "development"
+
+CURRENT_ENV = env_var.lower()
 
 class Settings(BaseSettings):
     # Database
@@ -103,8 +112,8 @@ def get_cors_origins() -> list:
         ])
         
     # En producción, asegurarse de que kaimox.up.railway.app esté
-    if is_production():
-         origins.append("https://kaimox.up.railway.app")
+    # Siempre agregar la URL de producción para evitar errores CORS si la variable ENV falla
+    origins.append("https://kaimox.up.railway.app")
     
     # Eliminar duplicados
     return list(set(origins))
