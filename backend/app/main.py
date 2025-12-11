@@ -20,7 +20,10 @@ app = FastAPI(
     redoc_url="/redoc" if not is_production() else None
 )
 #CORS
-origins = get_cors_origins()
+origins = [
+    "https://kaimox.up.railway.app",
+    "http://localhost:4200"
+]
 
 app.add_middleware(
     CORSMiddleware,
@@ -29,6 +32,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 
 #AUTENTIFICACION
 
