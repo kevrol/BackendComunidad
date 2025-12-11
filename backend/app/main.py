@@ -23,11 +23,11 @@ app = FastAPI(
     redoc_url="/redoc" if not is_production() else None
 )
 #CORS
-origins = ["*"]
+origins = get_cors_origins()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origin_regex="https?://.*",  # Permite cualquier origen (http y https) compatible con credenciales
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -42,39 +42,48 @@ def health_check():
 @app.post("/api/register", response_model=schemas.UserResponse, status_code=status.HTTP_201_CREATED)
 def register(user: schemas.UserCreate, db: Session = Depends(get_db)):
     """Registrar un nuevo usuario"""
-    db_user = db.query(models.User).filter(models.User.email == user.email).first()
-    if db_user:
-        raise HTTPException(status_code=400, detail="El email ya está registrado")
-    
-    db_user = db.query(models.User).filter(models.User.username == user.username).first()
-    if db_user:
-        raise HTTPException(status_code=400, detail="El nombre de usuario ya está en uso")
-    
-    verification_token = auth.generate_verification_token()
-    db_user = models.User(
-        email=user.email,
-        username=user.username,
-        hashed_password=auth.get_password_hash(user.password),
-        role=user.role or "client",
-        verification_token=verification_token,
-        is_active=True,
-        is_verified=False
-    )
-    
-    db.add(db_user)
-    db.commit()
-    db.refresh(db_user)
-    
     try:
-        email_service.send_verification_email(
-            email_to=user.email,
+        db_user = db.query(models.User).filter(models.User.email == user.email).first()
+        if db_user:
+            raise HTTPException(status_code=400, detail="El email ya está registrado")
+        
+        db_user = db.query(models.User).filter(models.User.username == user.username).first()
+        if db_user:
+            raise HTTPException(status_code=400, detail="El nombre de usuario ya está en uso")
+        
+        verification_token = auth.generate_verification_token()
+        db_user = models.User(
+            email=user.email,
             username=user.username,
-            token=verification_token
+            hashed_password=auth.get_password_hash(user.password),
+            role=user.role or "client",
+            verification_token=verification_token,
+            is_active=True,
+            is_verified=False
         )
+        
+        db.add(db_user)
+        db.commit()
+        db.refresh(db_user)
+        
+        try:
+            email_service.send_verification_email(
+                email_to=user.email,
+                username=user.username,
+                token=verification_token
+            )
+        except Exception as e:
+            print(f"Error enviando email: {e}")
+        
+        return db_user
+    except HTTPException as he:
+        raise he
     except Exception as e:
-        print(f"Error enviando email: {e}")
-    
-    return db_user
+        print(f"Error en registro: {str(e)}")
+        raise HTTPException(
+             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+             detail=f"Error interno del servidor: {str(e)}"
+        )
 
 @app.post("/api/login", response_model=schemas.Token)
 def login(user_credentials: schemas.UserLogin, db: Session = Depends(get_db)):
