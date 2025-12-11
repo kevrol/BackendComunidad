@@ -1,171 +1,130 @@
 import os
 import google.generativeai as genai
-from typing import List, Dict
+from typing import List, Dict, Optional
 from dotenv import load_dotenv
-
 # Cargar variables de entorno
 load_dotenv()
-
 # Configurar Gemini
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-
 if GEMINI_API_KEY:
     genai.configure(api_key=GEMINI_API_KEY)
 else:
     print("WARNING: GEMINI_API_KEY no encontrada en .env")
-
 class GeminiService:
     """Servicio para generar respuestas con Gemini AI"""
     
     def __init__(self):
         if GEMINI_API_KEY:
-            self.model = genai.GenerativeModel('gemini-pro')
+            # Usar gemini-pro o gemini-1.5-flash según disponibilidad
+            self.model = genai.GenerativeModel('gemini-2.5-flash') 
             self.enabled = True
         else:
             self.model = None
             self.enabled = False
     
+    def generate_review_suggestion(self, user_input: str, rating: int, service_context: str) -> str:
+        """Generar una sugerencia de reseña basada en input parcial y rating"""
+        if not self.enabled:
+            return user_input or "Excelente servicio."
+            
+        prompt = f"""
+        Actúa como un cliente de servicios del hogar.
+        Escribe una reseña corta (máximo 2-3 frases), natural y útil.
+        
+        Contexto del servicio: {service_context}
+        Calificación dada: {rating}/5 estrellas.
+        
+        Lo que el usuario escribió (borrador): "{user_input}"
+        
+        Instrucciones:
+        - Si el borrador está vacío, genera una reseña coherente con la calificación.
+        - Si hay texto, mejóralo, corrige ortografía y dale un tono más profesional pero cercano.
+        - NO uses frases como "Aquí tienes una reseña". Devuelve SOLO el texto de la reseña.
+        """
+        
+        try:
+            response = self.model.generate_content(prompt)
+            return response.text.strip()
+        except Exception as e:
+            print(f"Error generando review: {e}")
+            return user_input
     def generate_message_suggestions(self, context: str, conversation_history: List[Dict] = None) -> List[str]:
         """Generar sugerencias de mensajes"""
         if not self.enabled:
             return self._get_default_suggestions()
         
-        prompt = f"""Eres un asistente que ayuda a clientes a comunicarse con técnicos de servicios del hogar.
-
+        prompt = f"""Eres un asistente que ayuda a clientes a comunicarse con técnicos.
 Contexto: {context}
-
-Genera 3 sugerencias de mensajes cortos y profesionales que el cliente podría enviar al técnico. 
-Cada mensaje debe ser:
-- Claro y directo
-- Profesional pero amigable
-- Máximo 2-3 líneas
-- En español
-
-Formato: Devuelve solo las 3 sugerencias separadas por "|||" sin numeración ni viñetas.
-
-Ejemplo de formato de respuesta:
-Hola, ¿podrías darme un presupuesto para reparar una tubería?|||Me interesa contratar tus servicios, ¿cuándo tienes disponibilidad?|||¿Cuánto cobrarías por una revisión general?
+Genera 3 sugerencias de mensajes cortos y profesionales.
+Formato: Separados por "|||". 
+Ejemplo: Hola, precio?|||Disponibilidad?|||Gracias
 """
-        
         try:
             response = self.model.generate_content(prompt)
-            suggestions_text = response.text.strip()
-            suggestions = [s.strip() for s in suggestions_text.split("|||")]
-            return suggestions[:3]
+            return [s.strip() for s in response.text.split("|||")[:3]]
         except Exception as e:
-            print(f"Error generando sugerencias: {e}")
+            print(f"Error suggestions: {e}")
             return self._get_default_suggestions()
     
     def generate_smart_reply(self, last_message: str, user_role: str) -> str:
-        """Generar una respuesta inteligente"""
-        if not self.enabled:
-            return "Gracias por tu mensaje. Me pondré en contacto contigo pronto."
-        
-        role_context = "técnico" if user_role == "technician" else "cliente"
-        
-        prompt = f"""Eres un asistente que ayuda a {role_context}s a responder mensajes de manera profesional.
-
-Mensaje recibido: "{last_message}"
-
-Genera UNA respuesta profesional, cordial y útil en español. La respuesta debe ser:
-- Directa y clara (máximo 2-3 líneas)
-- Profesional pero amigable
-- Relevante al mensaje recibido
-
-Devuelve SOLO la respuesta, sin explicaciones adicionales.
-"""
-        
+        """Generar respuesta inteligente"""
+        if not self.enabled: return "Gracias."
+        prompt = f"Responde corto y profesional a: '{last_message}'"
         try:
-            response = self.model.generate_content(prompt)
-            return response.text.strip()
-        except Exception as e:
-            print(f"Error generando respuesta: {e}")
-            return "Gracias por tu mensaje. Me pondré en contacto contigo pronto."
-    
-    def generate_service_description(self, category: str, brief_description: str) -> str:
-        """Generar una descripción detallada de servicio"""
-        if not self.enabled:
-            return brief_description
+            return self.model.generate_content(prompt).text.strip()
+        except: return "Gracias."
+    def generate_service_description(self, category: str, description: str) -> str:
+        """Mejorar descripción de servicio"""
+        if not self.enabled: return description
         
-        prompt = f"""Mejora la siguiente descripción de un servicio de {category}:
-
-Descripción original: {brief_description}
-
-Genera una descripción más clara, profesional y detallada que incluya:
-- Qué se necesita específicamente
-- Detalles importantes para el técnico
-- Máximo 3-4 líneas
-
-Devuelve SOLO la descripción mejorada en español, sin títulos ni formato adicional.
-"""
+        prompt = f"""
+        Mejora esta descripción de servicio para un profesional de {category}.
+        Texto original: "{description}"
         
+        Objetivo: Hacerla atractiva, profesional y confiable para potenciales clientes.
+        Mantén un tono cercano pero experto. Máximo 50-60 palabras.
+        """
         try:
-            response = self.model.generate_content(prompt)
-            return response.text.strip()
-        except Exception as e:
-            print(f"Error mejorando descripción: {e}")
-            return brief_description
+            return self.model.generate_content(prompt).text.strip()
+        except: return description
 
     def summarize_reviews(self, reviews: List[str]) -> str:
-        """Resumir opiniones de un técnico"""
-        if not self.enabled or not reviews:
-            return "No hay suficientes opiniones para generar un resumen."
-            
-        reviews_text = "\n".join([f"- {r}" for r in reviews[:10]]) # Limit to 10 reviews
+        """Resumir opiniones"""
+        if not self.enabled or not reviews: return "Sin suficientes opiniones para generar resumen."
         
-        prompt = f"""Analiza las siguientes opiniones sobre un técnico y genera un resumen conciso:
-
-{reviews_text}
-
-El resumen debe:
-- Destacar las fortalezas principales
-- Mencionar áreas de mejora si las hay
-- Ser breve (máximo 3-4 líneas)
-- Estar en español
-- Tono profesional y objetivo
-
-Devuelve SOLO el resumen.
-"""
+        # Tomar solo las últimas 10 para no exceder tokens si hay muchas
+        reviews_text = "\n- ".join(reviews[:10])
+        
+        prompt = f"""
+        Resume las siguientes opiniones de clientes sobre un técnico:
+        
+        {reviews_text}
+        
+        Genera un párrafo corto (máximo 3 frases) destacando los puntos fuertes y áreas de mejora mencionadas.
+        Tono objetivo y útil para futuros clientes.
+        """
         try:
-            response = self.model.generate_content(prompt)
-            return response.text.strip()
-        except Exception as e:
-            print(f"Error resumiendo opiniones: {e}")
-            return "No se pudo generar el resumen de opiniones."
+            return self.model.generate_content(prompt).text.strip()
+        except: return "Resumen no disponible temporalmente."
 
     def estimate_price_range(self, category: str, description: str) -> str:
-        """Estimar rango de precios para un servicio"""
-        if not self.enabled:
-            return "Precio a convenir"
-            
-        prompt = f"""Estima un rango de precios razonable para el siguiente servicio en México (MXN):
-
-Categoría: {category}
-Descripción: {description}
-
-Considera:
-- Complejidad del trabajo
-- Materiales típicos (si aplica)
-- Tiempo estimado
-
-Devuelve SOLO el rango de precios estimado y una breve justificación (1 línea).
-Formato: "$MIN - $MAX MXN. Justificación."
-Ejemplo: "$500 - $800 MXN. Trabajo sencillo que requiere 1-2 horas."
-"""
+        """Estimar rango de precios"""
+        if not self.enabled: return "Precio a convenir"
+        
+        prompt = f"""
+        Estima un rango de precio razonable (en moneda local, asume contexto general o USD si no es claro) para este servicio:
+        Categoría: {category}
+        Descripción: {description}
+        
+        Devuelve SOLO el rango numérico estimado (ej: "$50 - $80") y una brevísima justificación (max 5 palabras).
+        Si no es posible estimar, di "A convenir".
+        """
         try:
-            response = self.model.generate_content(prompt)
-            return response.text.strip()
-        except Exception as e:
-            print(f"Error estimando precio: {e}")
-            return "Precio a convenir"
-    
-    def _get_default_suggestions(self) -> List[str]:
-        """Sugerencias por defecto cuando Gemini no está disponible"""
-        return [
-            "Hola, me interesa contratar tus servicios. ¿Podrías darme más información?",
-            "¿Cuál es tu disponibilidad para realizar este trabajo?",
-            "¿Podrías darme un presupuesto aproximado?"
-        ]
+            return self.model.generate_content(prompt).text.strip()
+        except: return "A convenir"
 
-# Instancia global del servicio
+    def _get_default_suggestions(self) -> List[str]:
+        return ["¿Está disponible?", "¿Presupuesto?", "Gracias"]
+
+# Instancia global
 gemini_service = GeminiService()

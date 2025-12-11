@@ -215,10 +215,12 @@ class RecommendationService:
         technician_scores = defaultdict(lambda: {"reviews": [], "friends": set()})
         
         for service in services:
-            if service.review and service.review.rating >= 4.0:
-                tech_id = service.technician_id
-                technician_scores[tech_id]["reviews"].append(service.review.rating)
-                technician_scores[tech_id]["friends"].add(service.client_id)
+            # Iterar sobre las reviews del servicio (aunque usualmente es una)
+            for review in service.reviews:
+                if review.rating >= 4.0:
+                    tech_id = service.technician_id
+                    technician_scores[tech_id]["reviews"].append(review.rating)
+                    technician_scores[tech_id]["friends"].add(service.client_id)
         
         # Crear recomendaciones
         for tech_id, data in technician_scores.items():

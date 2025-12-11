@@ -1103,6 +1103,17 @@ def estimate_service_price(
     """Estimar rango de precios con IA"""
     estimation = gemini_service.estimate_price_range(category, description)
     return {"estimation": estimation}
+
+@app.post("/api/generate-review")
+def generate_review(
+    user_input: str = Body(..., embed=True),
+    rating: int = Body(..., embed=True),
+    service_context: str = Body(..., embed=True),
+    current_user: models.User = Depends(auth.get_current_active_user)
+):
+    """Generar review con IA"""
+    review = gemini_service.generate_review_suggestion(user_input, rating, service_context)
+    return {"review": review}
     
 @app.get("/")
 def root():
