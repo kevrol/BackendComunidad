@@ -1,0 +1,16 @@
+fastapi==0.123.5
+uvicorn[standard]==0.38.0
+mysql-connector-python==9.1.0
+pydantic==2.9.0
+pydantic-settings==2.5.0
+bcrypt==4.2.0
+python-multipart==0.0.12
+emails==0.6
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+sqlalchemy==2.0.36
+python-dotenv==1.0.1
+google-generativeai==0.8.5
+pymysql
+email-validator
+pydantic[email]
