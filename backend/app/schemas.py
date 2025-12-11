@@ -212,7 +212,7 @@ class ReviewResponse(BaseModel):
     client_id: int
     client: UserSummaryWithEmail  
     technician_id: int
-    rating: int
+    rating: float
     comment: Optional[str]
     created_at: datetime
     

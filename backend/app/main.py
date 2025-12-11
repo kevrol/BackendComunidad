@@ -449,7 +449,7 @@ def complete_service(
     service = db.query(models.Service).filter(
         models.Service.id == service_id,
         models.Service.technician_id == current_user.id,
-        models.Service.status == "in_progress"
+        models.Service.status.in_(["in_progress", "accepted"])
     ).first()
     
     if not service:
