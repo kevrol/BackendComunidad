@@ -635,11 +635,12 @@ def get_dashboard_stats(
             
         other_user = service.technician if service.client_id == current_user.id else service.client
         
-        recent_activity.append({
-            "service": activity_type,
-            "client": other_user.full_name or other_user.username,
-            "time": service.updated_at.strftime("%d/%m/%Y")
-        })
+        if other_user:
+            recent_activity.append({
+                "service": activity_type,
+                "client": other_user.full_name or other_user.username,
+                "time": service.updated_at.strftime("%d/%m/%Y")
+            })
     
     if current_user.role == "client":
         # Estadísticas de cliente
@@ -691,6 +692,11 @@ def get_technician_profile(
     
     if not technician:
         raise HTTPException(status_code=404, detail="Técnico no encontrado")
+    
+    # Incrementar vistas de perfil (si no es el mismo usuario)
+    if technician.id != current_user.id:
+        technician.profile_views += 1
+        db.commit()
     
     # Obtener reviews del técnico
     reviews = db.query(models.Review).filter(
@@ -1027,9 +1033,19 @@ def get_dashboard_stats(
             unread_messages=unread_messages
         )
     else:
-        # Estadísticas de técnico
+        # Estadísticas de técnico - Calcular dinámicamente para evitar negativos
+        active_jobs_count = db.query(models.Service).filter(
+            models.Service.technician_id == current_user.id,
+            models.Service.status.in_(["accepted", "in_progress"])
+        ).count()
+        
+        # Actualizar el contador en el usuario si está desincronizado
+        if current_user.jobs_active != active_jobs_count:
+            current_user.jobs_active = active_jobs_count
+            db.commit()
+
         stats = schemas.TechnicianStats(
-            active_jobs=current_user.jobs_active,
+            active_jobs=active_jobs_count,
             completed_jobs=current_user.jobs_completed,
             rating=current_user.rating,
             total_reviews=current_user.total_reviews,
