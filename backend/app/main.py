@@ -625,73 +625,79 @@ def get_dashboard_stats(
     current_user: models.User = Depends(auth.get_current_active_user)
 ):
     """Obtener estadísticas para el dashboard"""
-    
-    # Obtener mensajes no leídos
-    unread_messages = app_services.MessagingService.get_unread_messages_count(db, current_user.id)
-    
-    # Obtener actividad reciente (últimos 5 eventos)
-    # Por ahora simulamos actividad reciente basada en servicios y solicitudes
-    recent_activity = []
-    
-    # Servicios recientes
-    services = db.query(models.Service).filter(
-        or_(
-            models.Service.client_id == current_user.id,
-            models.Service.technician_id == current_user.id
-        )
-    ).order_by(models.Service.updated_at.desc()).limit(5).all()
-    
-    for service in services:
-        activity_type = "Servicio actualizado"
-        if service.status == "completed":
-            activity_type = "Servicio completado"
-        elif service.status == "in_progress":
-            activity_type = "Servicio en progreso"
+    try:
+        # Obtener mensajes no leídos
+        unread_messages = app_services.MessagingService.get_unread_messages_count(db, current_user.id)
+        
+        # Obtener actividad reciente (últimos 5 eventos)
+        # Por ahora simulamos actividad reciente basada en servicios y solicitudes
+        recent_activity = []
+        
+        # Servicios recientes
+        services = db.query(models.Service).filter(
+            or_(
+                models.Service.client_id == current_user.id,
+                models.Service.technician_id == current_user.id
+            )
+        ).order_by(models.Service.updated_at.desc()).limit(5).all()
+        
+        for service in services:
+            activity_type = "Servicio actualizado"
+            if service.status == "completed":
+                activity_type = "Servicio completado"
+            elif service.status == "in_progress":
+                activity_type = "Servicio en progreso"
+                
+            other_user = service.technician if service.client_id == current_user.id else service.client
             
-        other_user = service.technician if service.client_id == current_user.id else service.client
+            if other_user:
+                recent_activity.append({
+                    "service": activity_type,
+                    "client": other_user.full_name or other_user.username,
+                    "time": service.updated_at.strftime("%d/%m/%Y")
+                })
         
-        if other_user:
-            recent_activity.append({
-                "service": activity_type,
-                "client": other_user.full_name or other_user.username,
-                "time": service.updated_at.strftime("%d/%m/%Y")
-            })
-    
-    if current_user.role == "client":
-        # Estadísticas de cliente
-        hired_services = db.query(models.Service).filter(
-            models.Service.client_id == current_user.id
-        ).count()
+        if current_user.role == "client":
+            # Estadísticas de cliente
+            hired_services = db.query(models.Service).filter(
+                models.Service.client_id == current_user.id
+            ).count()
+            
+            friends_count = len(current_user.friends)
+            
+            # Favoritos (simulado por ahora si no hay tabla directa, o usar la relación si existe)
+            favorites_count = 0 # Implementar si existe tabla de favoritos
+            
+            stats = schemas.ClientStats(
+                contacts=friends_count, # Usamos amigos como contactos
+                hired_services=hired_services,
+                friends=friends_count,
+                favorites=favorites_count,
+                profile_views=current_user.profile_views,
+                unread_messages=unread_messages
+            )
+        else:
+            # Estadísticas de técnico
+            stats = schemas.TechnicianStats(
+                active_jobs=current_user.jobs_active,
+                completed_jobs=current_user.jobs_completed,
+                rating=current_user.rating,
+                total_reviews=current_user.total_reviews,
+                profile_views=current_user.profile_views,
+                unread_messages=unread_messages
+            )
         
-        friends_count = len(current_user.friends)
-        
-        # Favoritos (simulado por ahora si no hay tabla directa, o usar la relación si existe)
-        favorites_count = 0 # Implementar si existe tabla de favoritos
-        
-        stats = schemas.ClientStats(
-            contacts=friends_count, # Usamos amigos como contactos
-            hired_services=hired_services,
-            friends=friends_count,
-            favorites=favorites_count,
-            profile_views=current_user.profile_views,
-            unread_messages=unread_messages
+        return schemas.DashboardResponse(
+            user=current_user,
+            stats=stats,
+            recent_activity=recent_activity
         )
-    else:
-        # Estadísticas de técnico
-        stats = schemas.TechnicianStats(
-            active_jobs=current_user.jobs_active,
-            completed_jobs=current_user.jobs_completed,
-            rating=current_user.rating,
-            total_reviews=current_user.total_reviews,
-            profile_views=current_user.profile_views,
-            unread_messages=unread_messages
+    except Exception as e:
+        print(f"Error en dashboard: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error interno dashboard: {str(e)}"
         )
-    
-    return schemas.DashboardResponse(
-        user=current_user,
-        stats=stats,
-        recent_activity=recent_activity
-    )
 
 @app.get("/api/technicians/{technician_id}/profile", response_model=schemas.TechnicianProfileResponse)
 def get_technician_profile(
