@@ -619,84 +619,119 @@ def get_favorites(
 
 #DASHBOARD
 
+
 @app.get("/api/dashboard/stats", response_model=schemas.DashboardResponse)
 def get_dashboard_stats(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_current_active_user)
 ):
-    """Obtener estadísticas para el dashboard"""
+    """
+    Obtener estadísticas para el dashboard (Versión Robusta / Debug)
+    """
+    import traceback
+    
     try:
-        # Obtener mensajes no leídos
-        unread_messages = app_services.MessagingService.get_unread_messages_count(db, current_user.id)
-        
-        # Obtener actividad reciente (últimos 5 eventos)
-        # Por ahora simulamos actividad reciente basada en servicios y solicitudes
-        recent_activity = []
-        
-        # Servicios recientes
-        services = db.query(models.Service).filter(
-            or_(
-                models.Service.client_id == current_user.id,
-                models.Service.technician_id == current_user.id
-            )
-        ).order_by(models.Service.updated_at.desc()).limit(5).all()
-        
-        for service in services:
-            activity_type = "Servicio actualizado"
-            if service.status == "completed":
-                activity_type = "Servicio completado"
-            elif service.status == "in_progress":
-                activity_type = "Servicio en progreso"
-                
-            other_user = service.technician if service.client_id == current_user.id else service.client
+        # 1. Obtener mensajes no leídos (Defensivo)
+        unread_messages = 0
+        try:
+            if hasattr(app_services, 'MessagingService'):
+                unread_messages = app_services.MessagingService.get_unread_messages_count(db, current_user.id)
+            else:
+                print("WARNING: MessagingService no encontrado en app_services")
+        except Exception as msg_error:
+            print(f"Error obteniendo mensajes no leídos: {msg_error}")
+            # Continuamos sin fallar todo el request
             
-            if other_user:
+        # 2. Activity Feed (Defensivo)
+        recent_activity = []
+        try:
+            services_query = db.query(models.Service).filter(
+                or_(
+                    models.Service.client_id == current_user.id,
+                    models.Service.technician_id == current_user.id
+                )
+            ).order_by(models.Service.updated_at.desc()).limit(5)
+            
+            services = services_query.all()
+            
+            for service in services:
+                activity_type = "Servicio actualizado"
+                if service.status == "completed":
+                    activity_type = "Servicio completado"
+                elif service.status == "in_progress":
+                    activity_type = "Servicio en progreso"
+                    
+                # Determinar el 'otro' usuario de forma segura
+                is_client = (service.client_id == current_user.id)
+                other_user = service.technician if is_client else service.client
+                
+                other_name = "Usuario"
+                if other_user:
+                    other_name = getattr(other_user, 'full_name', None) or other_user.username
+                
+                time_str = service.updated_at.strftime("%d/%m/%Y") if service.updated_at else ""
                 recent_activity.append({
                     "service": activity_type,
-                    "client": other_user.full_name or other_user.username,
-                    "time": service.updated_at.strftime("%d/%m/%Y")
+                    "client": other_name, # El frontend espera 'client' como nombre
+                    "time": time_str
                 })
+        except Exception as activity_error:
+            print(f"Error generando actividad reciente: {activity_error}")
+            traceback.print_exc()
+            
+        # 3. Stats Específicas (Defensivo con valores por defecto)
+        # Usamos getattr para evitar caídas si el modelo no tiene el campo aún
         
         if current_user.role == "client":
-            # Estadísticas de cliente
-            hired_services = db.query(models.Service).filter(
+            hired_services_count = db.query(models.Service).filter(
                 models.Service.client_id == current_user.id
             ).count()
             
-            friends_count = len(current_user.friends)
+            # Manejo seguro de friends
+            friends_list = getattr(current_user, 'friends', [])
+            friends_count = len(friends_list) if friends_list else 0
             
-            # Favoritos (simulado por ahora si no hay tabla directa, o usar la relación si existe)
-            favorites_count = 0 # Implementar si existe tabla de favoritos
-            
+            # Profile views seguro
+            profile_views = getattr(current_user, 'profile_views', 0) or 0
             stats = schemas.ClientStats(
                 contacts=friends_count, # Usamos amigos como contactos
-                hired_services=hired_services,
+                hired_services=hired_services_count,
                 friends=friends_count,
-                favorites=favorites_count,
-                profile_views=current_user.profile_views,
+                favorites=0, # Placeholder
+                profile_views=profile_views,
                 unread_messages=unread_messages
             )
         else:
-            # Estadísticas de técnico
+            # Stats Técnico
+            active_jobs = getattr(current_user, 'jobs_active', 0) or 0
+            completed_jobs = getattr(current_user, 'jobs_completed', 0) or 0
+            rating = getattr(current_user, 'rating', 0.0) or 0.0
+            total_reviews = getattr(current_user, 'total_reviews', 0) or 0
+            profile_views = getattr(current_user, 'profile_views', 0) or 0
             stats = schemas.TechnicianStats(
-                active_jobs=current_user.jobs_active,
-                completed_jobs=current_user.jobs_completed,
-                rating=current_user.rating,
-                total_reviews=current_user.total_reviews,
-                profile_views=current_user.profile_views,
+                active_jobs=active_jobs,
+                completed_jobs=completed_jobs,
+                rating=float(rating), # Asegurar float
+                total_reviews=total_reviews,
+                profile_views=profile_views,
                 unread_messages=unread_messages
             )
         
         return schemas.DashboardResponse(
-            user=current_user,
+            user=current_user, # Pydantic debe tener orm_mode=True
             stats=stats,
             recent_activity=recent_activity
         )
     except Exception as e:
-        print(f"Error en dashboard: {e}")
+        # Catch-all final para imprimir el error REAL en la consola del servidor
+        print("------------- CRITICAL DASHBOARD ERROR -------------")
+        print(f"Error details: {e}")
+        traceback.print_exc()
+        print("----------------------------------------------------")
+        
         raise HTTPException(
             status_code=500,
-            detail=f"Error interno dashboard: {str(e)}"
+            detail=f"Error interno recuperando dashboard. Revisa los logs del servidor para más detalles."
         )
 
 @app.get("/api/technicians/{technician_id}/profile", response_model=schemas.TechnicianProfileResponse)
