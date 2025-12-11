@@ -23,7 +23,7 @@ app = FastAPI(
     redoc_url="/redoc" if not is_production() else None
 )
 #CORS
-origins = get_cors_origins()
+origins = ["*"]
 
 app.add_middleware(
     CORSMiddleware,
