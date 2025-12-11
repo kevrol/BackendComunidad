@@ -62,8 +62,8 @@ def get_settings():
     # 1. Resolver Database URL
     if not settings.database_url:
         if settings.environment == "production":
-            # Intentar usar DATABASE_URL_PROD, o MYSQL_URL (Railway)
-            settings.database_url = settings.database_url_prod or os.getenv("MYSQL_URL") or os.getenv("MYSQL_PUBLIC_URL")
+            # Intentar usar MYSQL_URL (Railway Internal) primero, luego DATABASE_URL_PROD, luego MYSQL_PUBLIC_URL
+            settings.database_url = os.getenv("MYSQL_URL") or settings.database_url_prod or os.getenv("MYSQL_PUBLIC_URL")
         else:
             settings.database_url = settings.database_url_dev
             

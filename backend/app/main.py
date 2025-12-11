@@ -11,7 +11,10 @@ from .config import settings, is_production
 from app.config import get_cors_origins
 import json
 
-models.Base.metadata.create_all(bind=engine)
+try:
+    models.Base.metadata.create_all(bind=engine)
+except Exception as e:
+    print(f"Error creando tablas en la base de datos: {e}")
 
 app = FastAPI(
     title="Kaimo API",
